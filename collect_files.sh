@@ -1,35 +1,81 @@
 #!/bin/bash
 
-inputDirectory="$1"
-outputDirectory="$2"
+inputDirectory=""
+outputDirectory=""
+maxDepth=0
 
-# Create the output directory if it does not exist
-if [ ! -d "$outputDirectory" ]; then
-    mkdir -p "$outputDirectory"
-fi
-
-# Grant read and execute permissions for the input directory and its contents (if the directory and subdirectories are not empty)
-chmod -R +x "$inputDirectory"
-
-# Find files in the input directory and copy them to the output directory, checking for duplicates
-find "$inputDirectory" -type f | while read -r path; do
-    filename=$(basename -- "$path")
-    destFilePath="$outputDirectory/$filename"
-    counter_of_identical_files=1
-
-    # If a file with the same name exists, add a counter to the file name
-    while [ -f "$destFilePath" ]; do
-        baseName="${filename%.*}"
-        extension="${filename##*.}"
-
-        if [[ "$filename" == *.* ]]; then
-            destFilePath="$outputDirectory/${baseName}($counter_of_identical_files).$extension"
-        else
-            destFilePath="$outputDirectory/${baseName}_$counter_of_identical_files"
+parse_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --max_depth)
+        maxDepth="$2"
+        shift 2
+        ;;
+      *)
+        if [[ -z "$inputDirectory" ]]; then
+          inputDirectory="$1"
+        elif [[ -z "$outputDirectory" ]]; then
+          outputDirectory="$1"
         fi
-        ((counter_of_identical_files++))
-    done
+        shift
+        ;;
+    esac
+  done
+}
 
-    # Copy the file to the target directory
-    cp -a "$path" "$destFilePath"
-done
+prepare_directories() {
+  mkdir -p "$outputDirectory" >/dev/null 2>&1
+  chmod -R +x "$inputDirectory" >/dev/null 2>&1
+}
+
+build_find_command() {
+  local cmd=(find "$inputDirectory" -type f)
+  [[ $maxDepth -gt 0 ]] && cmd+=(-mindepth 1 -maxdepth "$maxDepth")
+  echo "${cmd[@]}"
+}
+
+generate_unique_path() {
+  local destDir="$1"
+  local baseName="$2"
+  local fileName="${baseName%.*}"
+  local extension="${baseName##*.}"
+
+  local candidatePath="$destDir/$baseName"
+  local counter=1
+
+  while [[ -e "$candidatePath" ]]; do
+    if [[ "$baseName" == *.* ]]; then
+      candidatePath="$destDir/${fileName}($counter).$extension"
+    else
+      candidatePath="$destDir/${fileName}($counter)"
+    fi
+    ((counter++))
+  done
+
+  echo "$candidatePath"
+}
+
+copy_files() {
+  local findCmd=($(build_find_command))
+
+  "${findCmd[@]}" | while IFS= read -r filePath; do
+    local relPath="${filePath#$inputDirectory/}"
+    local destDir="$outputDirectory/$(dirname "$relPath")"
+    local baseName=$(basename "$relPath")
+
+    mkdir -p "$destDir" >/dev/null 2>&1
+
+    local finalDest
+    finalDest=$(generate_unique_path "$destDir" "$baseName")
+
+    cp -a "$filePath" "$finalDest" >/dev/null 2>&1
+  done
+}
+
+main() {
+  parse_arguments "$@"
+  prepare_directories
+  copy_files
+}
+
+main "$@"
