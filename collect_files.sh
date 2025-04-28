@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-max_depth_value=
-if [[ $1 == -m || $1 == --max_depth ]]; then
-  max_depth_value=$2
+max_depth=
+if [[ $1 == "-m" || $1 == "--max_depth" ]]; then
+  max_depth=$2
   shift 2
 fi
 
@@ -10,68 +10,63 @@ input_dir=$1
 output_dir=$2
 mkdir -p "$output_dir"
 
-join_paths() {
-  local IFS="/"
-  echo "$*"
-}
+
+join(){ local IFS="/"; echo "$*"; }
 
 find "$input_dir" -type f -print0 | while IFS= read -r -d '' file_path; do
-  relative_path=${file_path#"$input_dir"/}
-  relative_dir=$(dirname "$relative_path")
-  filename=$(basename "$relative_path")
-  IFS='/' read -ra dir_segments <<< "$relative_dir"
 
-  if [[ -z $max_depth_value ]]; then
-    target_dir="$output_dir"
+  rel=${file_path#"$input_dir"/}
+  rel_dir=$(dirname "$rel")
+  filename=$(basename "$rel")
+
+
+  if [[ "$rel_dir" == "." ]]; then
+    dir_parts=()
   else
-    if (( ${#dir_segments[@]} > max_depth_value )); then
-      truncated_segments=( "${dir_segments[@]:0:max_depth_value}" )
-    else
-      truncated_segments=( "${dir_segments[@]}" )
-    fi
-    target_dir="$output_dir/$(join_paths "${truncated_segments[@]}")"
+    IFS="/" read -ra dir_parts <<< "$rel_dir"
   fi
+  depth=${#dir_parts[@]}
 
-  mkdir -p "$target_dir"
-  dest_path="$target_dir/$filename"
-  copy_index=1
-  base_name=${filename%.*}
-  extension=${filename##*.}
+  if [[ -z $max_depth ]]; then
+    dest_dirs=( "$output_dir" )
+  else
+    dest_dirs=()
 
-  while [[ -e $dest_path ]]; do
-    if [[ $filename == *.* && $extension != $filename ]]; then
-      dest_path="$target_dir/${base_name}($copy_index).$extension"
-    else
-      dest_path="$target_dir/${base_name}_$copy_index"
+
+    if (( depth < max_depth )); then
+
+      dest_dirs+=( "$output_dir${rel_dir:+/$rel_dir}" )
     fi
-    ((copy_index++))
-  done
-  cp -a "$file_path" "$dest_path"
 
-  if [[ -n $max_depth_value ]]; then
-    if (( ${#dir_segments[@]} >= max_depth_value )); then
-      if (( max_depth_value > 1 )); then
-        start_index=$(( ${#dir_segments[@]} - (max_depth_value - 1) ))
-        flat_segments=( "${dir_segments[@]:start_index:(max_depth_value - 1)}" )
-        flat_dir=$(join_paths "${flat_segments[@]}")
+
+    if (( depth >= max_depth )); then
+      if (( max_depth > 1 )); then
+        start=$(( depth - (max_depth - 1) ))
+        flat_parts=( "${dir_parts[@]:start:(max_depth-1)}" )
+        flat_dir=$(join "${flat_parts[@]}")
+        dest_dirs+=( "$output_dir/$flat_dir" )
       else
-        flat_dir=""
+        dest_dirs+=( "$output_dir" )
       fi
-
-      flat_target_dir="$output_dir/$flat_dir"
-      mkdir -p "$flat_target_dir"
-
-      flat_dest_path="$flat_target_dir/$filename"
-      flat_index=1
-      while [[ -e $flat_dest_path ]]; do
-        if [[ $filename == *.* && $extension != $filename ]]; then
-          flat_dest_path="$flat_target_dir/${base_name}($flat_index).$extension"
-        else
-          flat_dest_path="$flat_target_dir/${base_name}_$flat_index"
-        fi
-        ((flat_index++))
-      done
-      cp -a "$file_path" "$flat_dest_path"
     fi
   fi
+
+  for d in "${dest_dirs[@]}"; do
+    mkdir -p "$d"
+    dest="$d/$filename"
+
+    idx=1
+    base="${filename%.*}"
+    ext="${filename##*.}"
+    while [[ -e "$dest" ]]; do
+      if [[ "$filename" == *.* && "$ext" != "$filename" ]]; then
+        dest="$d/${base}($idx).$ext"
+      else
+        dest="$d/${base}_$idx"
+      fi
+      ((idx++))
+    done
+
+    cp -a "$file_path" "$dest"
+  done
 done
