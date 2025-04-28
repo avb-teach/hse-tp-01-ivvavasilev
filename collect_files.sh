@@ -1,28 +1,28 @@
 #!/bin/bash
 
-inputDirectory="$1"
-outputDirectory="$2"
-mkdir -p "$outputDirectory"
+input_="$1"
+output_="$2"
+mkdir -p "$output_"
 
 
-chmod -R +x "$inputDirectory"
+chmod -R +x "$input_"
 
-find "$inputDirectory" -type f | while read -r path; do
+find "$input_" -type f | while read -r path; do
     filename=$(basename -- "$path")
-    destFilePath="$outputDirectory/$filename"
+    FilePath="$output_/$filename"
     counter=1
 
-    while [ -f "$destFilePath" ]; do
+    while [ -f "$FilePath" ]; do
         baseName="${filename%.*}"
         extension="${filename##*.}"
 
         if [[ "$filename" == *.* ]]; then
-            destFilePath="$outputDirectory/${baseName}($counter).$extension"
+            FilePath="$output_/${baseName}($counter).$extension"
         else
-            destFilePath="$outputDirectory/${baseName}_$counter"
+            FilePath="$output_/${baseName}_$counter"
         fi
         ((counter++))
     done
 
-    cp -a "$path" "$destFilePath"
+    cp -a "$path" "$FilePath"
 done
